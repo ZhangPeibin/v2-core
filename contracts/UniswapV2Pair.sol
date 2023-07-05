@@ -59,6 +59,9 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
     event Sync(uint112 reserve0, uint112 reserve1);
 
     constructor() public {
+        //factory调用的时候进行构造，所以这个msg.sender 是factory的地址
+        //IUniswapV2Pair(pair).initialize(token0, token1);
+
         factory = msg.sender;
     }
 
@@ -88,6 +91,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
     // if fee is on, mint liquidity equivalent to 1/6th of the growth in sqrt(k)
     function _mintFee(uint112 _reserve0, uint112 _reserve1) private returns (bool feeOn) {
         address feeTo = IUniswapV2Factory(factory).feeTo();
+        //判断fee是否打开取决于这个feeTo地址是否存在
         feeOn = feeTo != address(0);
         uint _kLast = kLast; // gas savings
         if (feeOn) {
@@ -108,12 +112,17 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
 
     // this low-level function should be called from a contract which performs important safety checks
     function mint(address to) external lock returns (uint liquidity) {
+
+        //得到之前的token余额
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
+        //得到当前token0的余额
         uint balance0 = IERC20(token0).balanceOf(address(this));
+        // 得到当前token1的余额
         uint balance1 = IERC20(token1).balanceOf(address(this));
+        //通过当前的余额跟之前的去对比    
         uint amount0 = balance0.sub(_reserve0);
         uint amount1 = balance1.sub(_reserve1);
-
+        
         bool feeOn = _mintFee(_reserve0, _reserve1);
         uint _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
         if (_totalSupply == 0) {
