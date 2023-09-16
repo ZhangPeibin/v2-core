@@ -55,12 +55,15 @@ contract UniswapV2Factory is IUniswapV2Factory {
 
         // 去创建pair 具体是在UniswapV2Pair合约做的
         bytes memory bytecode = type(UniswapV2Pair).creationCode;
-        // token0跟token1的合并编码
+        // 使用abi.encodePacked编码
+        //并且使用keccak256对上面的结果进行hash运算，并得到一个字节数组
         bytes32 salt = keccak256(abi.encodePacked(token0, token1));
+
         assembly {
             pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
         }
         // 初始化交易对
+        //pair的创建就是通过UniswapV2Pair+ tokenA+tokenB一起创建的
         IUniswapV2Pair(pair).initialize(token0, token1);
 
         // 存token0 跟token 1 以及pair数据

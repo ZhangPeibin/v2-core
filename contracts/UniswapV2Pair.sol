@@ -65,7 +65,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         factory = msg.sender;
     }
 
-    // called once by the factory at time of deployment
+    // 当factory 通过create2创建新的pair合约的时候，会调用该pair进行初始化
     function initialize(address _token0, address _token1) external {
         require(msg.sender == factory, 'UniswapV2: FORBIDDEN'); // sufficient check
         token0 = _token0;
@@ -88,13 +88,17 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         emit Sync(reserve0, reserve1);
     }
 
+    // 添加流动性 
     // if fee is on, mint liquidity equivalent to 1/6th of the growth in sqrt(k)
     function _mintFee(uint112 _reserve0, uint112 _reserve1) private returns (bool feeOn) {
+        // 获取该pair的接受fee的address
         address feeTo = IUniswapV2Factory(factory).feeTo();
         //判断fee是否打开取决于这个feeTo地址是否存在
         feeOn = feeTo != address(0);
+
         uint _kLast = kLast; // gas savings
         if (feeOn) {
+            //如果打开了开关 
             if (_kLast != 0) {
                 uint rootK = Math.sqrt(uint(_reserve0).mul(_reserve1));
                 uint rootKLast = Math.sqrt(_kLast);
@@ -110,25 +114,38 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         }
     }
 
-    // this low-level function should be called from a contract which performs important safety checks
+    /**
+     *  this low-level function should be called from a contract which performs important safety checks
+     *  这是添加流动性的底层代码
+     *  上层添加流动性的时候token0和token1已结都转到合约地址了
+     *  然后在调用pair的mint功能为该份额生产pair token 
+     * 
+     * @notice 
+     */
     function mint(address to) external lock returns (uint liquidity) {
 
-        //得到之前的token余额
+        //得到在此之前的交易对的 token0的数量_reserve0和token1的数量_reserve1
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
+
         //得到当前token0的余额
         uint balance0 = IERC20(token0).balanceOf(address(this));
         // 得到当前token1的余额
         uint balance1 = IERC20(token1).balanceOf(address(this));
         //通过当前的余额跟之前的去对比    
+        //这里需要注意， _reserve0和_reserve1是该用户加入流动性之前的合约里面的代币数量
+
+        // 通过balance0 - _reserve0即可得出当前该用户转入合约的数量
         uint amount0 = balance0.sub(_reserve0);
         uint amount1 = balance1.sub(_reserve1);
         
         bool feeOn = _mintFee(_reserve0, _reserve1);
+
         uint _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
-        if (_totalSupply == 0) {
+        if (_totalSupply == 0) { // 如果这是第一次加流动性
             liquidity = Math.sqrt(amount0.mul(amount1)).sub(MINIMUM_LIQUIDITY);
            _mint(address(0), MINIMUM_LIQUIDITY); // permanently lock the first MINIMUM_LIQUIDITY tokens
         } else {
+                
             liquidity = Math.min(amount0.mul(_totalSupply) / _reserve0, amount1.mul(_totalSupply) / _reserve1);
         }
         require(liquidity > 0, 'UniswapV2: INSUFFICIENT_LIQUIDITY_MINTED');
@@ -147,18 +164,24 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         uint balance0 = IERC20(_token0).balanceOf(address(this));
         uint balance1 = IERC20(_token1).balanceOf(address(this));
         uint liquidity = balanceOf[address(this)];
-
+        //处理fee的问题
+        //返回fee是否打开
         bool feeOn = _mintFee(_reserve0, _reserve1);
         uint _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
+        // 用户流动性份额100 ，总份额1000 ，那么 总代币是500 。那么用户就分 100/1000 * 500也就是50个
         amount0 = liquidity.mul(balance0) / _totalSupply; // using balances ensures pro-rata distribution
         amount1 = liquidity.mul(balance1) / _totalSupply; // using balances ensures pro-rata distribution
         require(amount0 > 0 && amount1 > 0, 'UniswapV2: INSUFFICIENT_LIQUIDITY_BURNED');
+
+        //从流动池删掉对应的流动性。也就是 1000 -100 总份额还有 900
         _burn(address(this), liquidity);
+        //将合约的代码转到用户地址
         _safeTransfer(_token0, to, amount0);
         _safeTransfer(_token1, to, amount1);
+
         balance0 = IERC20(_token0).balanceOf(address(this));
         balance1 = IERC20(_token1).balanceOf(address(this));
-
+        //更新余额
         _update(balance0, balance1, _reserve0, _reserve1);
         if (feeOn) kLast = uint(reserve0).mul(reserve1); // reserve0 and reserve1 are up-to-date
         emit Burn(msg.sender, amount0, amount1, to);
